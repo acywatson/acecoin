@@ -21,6 +21,10 @@ type Block struct {
 	PreviousHash []byte
 }
 
+type UserData struct {
+	Data string
+}
+
 func main() {
 	currentTime := time.Now().Unix()
 	genesisHash := sha256.New()
@@ -48,17 +52,24 @@ func main() {
 		body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 		handleError(err)
 		if err := r.Body.Close(); err != nil {
+			handleError(err)
 			panic(err)
 		}
-		var data string
+		var data UserData
 		if err := json.Unmarshal(body, &data); err != nil {
 			setHeaders(&w)
 			w.WriteHeader(422) // unprocessable entity
+			handleError(err)
 			if err := json.NewEncoder(w).Encode(err); err != nil {
+				handleError(err)
 				panic(err)
 			}
+			return
 		}
-		newBlock := generateNextBlock(&blockchain, blockchain[len(blockchain) - 1], data, w)
+		newBlock, newChain := generateNextBlock(&blockchain, blockchain[len(blockchain) - 1], data.Data, w)
+		blockchain = *newChain
+		// fmt.Println("New Chain:")
+		// fmt.Println(blockchain)
 		json.NewEncoder(w).Encode(newBlock)
 	})
 
@@ -66,7 +77,7 @@ func main() {
 	http.ListenAndServe(":8081", nil)
 }
 
-func generateNextBlock(blockchain *[]Block, previousBlock Block, blockData string, w http.ResponseWriter) Block {
+func generateNextBlock(blockchain *[]Block, previousBlock Block, blockData string, w http.ResponseWriter) (Block, *[]Block) {
 	 newBlock := Block{
 		Index:        previousBlock.Index + 1,
 		Data:         blockData,
@@ -75,8 +86,7 @@ func generateNextBlock(blockchain *[]Block, previousBlock Block, blockData strin
 		PreviousHash: previousBlock.Hash,
 	}
 	newChain := append(*blockchain, newBlock)
-	blockchain = &newChain
-	return newBlock
+	return newBlock, &newChain
 }
 
 func validateNewBlock(newBlock Block, previousBlock Block) bool {
@@ -160,6 +170,6 @@ func setHeaders(w *http.ResponseWriter) {
 
 func handleError(err error) {
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 }
