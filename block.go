@@ -8,8 +8,6 @@ import (
 	"bytes"
 	"net/http"
 	"encoding/json"
-	"io/ioutil"
-	"io"
 	"log"
 )
 
@@ -26,55 +24,25 @@ type UserData struct {
 }
 
 func main() {
-	currentTime := time.Now().Unix()
+	// Create genesis block
+	genesisTime := time.Now().Unix()
 	genesisHash := sha256.New()
 	genesisHash.Write([]byte("AceCoinGenesis"))
+	genesisBlock := Block{0, "genesis", genesisTime, genesisHash.Sum(nil), nil}
 
-	genesisBlock := Block{0, "genesis", currentTime, genesisHash.Sum(nil), nil}
+	// Initialize chain and store in memory
 	blockchain := make([]Block, 1)
 	blockchain[0] = genesisBlock
 	fmt.Println("AceCoin successfully initialized.")
 	fmt.Println("Genesis:")
 	fmt.Println(blockchain)
 
-	// List blocks
-	http.HandleFunc("/blocks", func(w http.ResponseWriter, r *http.Request) {
-		getBlockchainJSON(blockchain, w)
-	})
+	//// Initialize P2P server
+	//p2pServer := getNewP2PServer()
+	//initializeP2PServer(p2pServer)
 
-	// Create new block
-	http.HandleFunc("/new", func(w http.ResponseWriter, r *http.Request) {
-		setHeaders(&w)
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
-		handleError(err)
-		if err := r.Body.Close(); err != nil {
-			handleError(err)
-			panic(err)
-		}
-		var data UserData
-		if err := json.Unmarshal(body, &data); err != nil {
-			setHeaders(&w)
-			w.WriteHeader(422) // unprocessable entity
-			handleError(err)
-			if err := json.NewEncoder(w).Encode(err); err != nil {
-				handleError(err)
-				panic(err)
-			}
-			return
-		}
-		newBlock, newChain := generateNextBlock(&blockchain, blockchain[len(blockchain) - 1], data.Data, w)
-		blockchain = *newChain
-		// fmt.Println("New Chain:")
-		// fmt.Println(blockchain)
-		json.NewEncoder(w).Encode(newBlock)
-	})
-
-	// Start server
-	http.ListenAndServe(":8081", nil)
+	// Initialize HTTP server
+	initializeHttpServer(blockchain)
 }
 
 func generateNextBlock(blockchain *[]Block, previousBlock Block, blockData string, w http.ResponseWriter) (Block, *[]Block) {
