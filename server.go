@@ -8,6 +8,11 @@ import (
 )
 
 func initializeHttpServer(blockchain []Block) {
+
+	// Start P2P server
+	p2pServer := getNewP2PServer()
+	go initializeP2PServer(p2pServer)
+
 	// List blocks
 	http.HandleFunc("/chain", func(w http.ResponseWriter, r *http.Request) {
 		getBlockchainJSON(blockchain, w)
@@ -44,15 +49,17 @@ func initializeHttpServer(blockchain []Block) {
 		json.NewEncoder(w).Encode(newBlock)
 	})
 
-	//// List peers
-	//http.HandleFunc("/peers", func(w http.ResponseWriter, r *http.Request) {
-	//	// List peers
-	//})
-	//
-	//// Add peer connection
-	//http.HandleFunc("/addPeer", func(w http.ResponseWriter, r *http.Request) {
-	//	serveWs(p2pServer, w, r)
-	//})
+	// P2P Endpoints //
+
+	// List peers
+	http.HandleFunc("/peers", func(w http.ResponseWriter, r *http.Request) {
+		// List peers
+	})
+
+	// Add peer connection
+	http.HandleFunc("/addPeer", func(w http.ResponseWriter, r *http.Request) {
+		serveWs(p2pServer, w, r)
+	})
 
 	// Start server
 	http.ListenAndServe(":8081", nil)

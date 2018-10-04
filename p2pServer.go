@@ -21,6 +21,8 @@ type P2PServer struct {
 	unregister chan *Client
 }
 
+// Hub
+
 func getNewP2PServer() *P2PServer {
 	return &P2PServer{
 		clients: make(map [*Client]bool),

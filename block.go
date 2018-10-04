@@ -37,10 +37,6 @@ func main() {
 	fmt.Println("Genesis:")
 	fmt.Println(blockchain)
 
-	//// Initialize P2P server
-	//p2pServer := getNewP2PServer()
-	//initializeP2PServer(p2pServer)
-
 	// Initialize HTTP server
 	initializeHttpServer(blockchain)
 }

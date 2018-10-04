@@ -2,6 +2,6 @@
 
 To start node locally, run:
 
-go run block.go server.go
+sh init.sh
 
 in the project directory
