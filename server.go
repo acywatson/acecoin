@@ -53,7 +53,7 @@ func initializeHttpServer(blockchain []Block) {
 
 	// List peers
 	http.HandleFunc("/peers", func(w http.ResponseWriter, r *http.Request) {
-		// List peers
+		json.NewEncoder(w).Encode(p2pServer.listPeers())
 	})
 
 	// Add peer connection

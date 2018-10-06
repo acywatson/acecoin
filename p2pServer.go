@@ -6,6 +6,7 @@ import (
 	"log"
 	"bytes"
 	"net/http"
+	"net"
 )
 
 type Client struct {
@@ -56,6 +57,15 @@ func initializeP2PServer(hub *P2PServer) {
 	}
 }
 
+func (h *P2PServer) listPeers() []net.Addr {
+	peers := make([]net.Addr, 0)
+	for peer := range h.clients {
+		addr := peer.conn.RemoteAddr()
+		peers = append(peers, addr)
+	}
+	return peers
+}
+
 // Client
 
 const (
@@ -80,6 +90,9 @@ var (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 // readPump pumps messages from the websocket connection to the hub.
