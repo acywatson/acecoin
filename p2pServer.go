@@ -11,6 +11,8 @@ import (
 	"fmt"
 )
 
+// declare our types
+
 type Client struct {
 	hub *P2PServer
 	conn *websocket.Conn
@@ -32,8 +34,15 @@ type Message struct {
 	Data []Block `json:"data"`
 }
 
-// Server
+var messageTypes = map[string]float64 {
+	"QUERY_LATEST": 0,
+	"QUERY_ALL": 1,
+	"BLOCKHAIN": 2,
+}
 
+// Server (Hub)
+
+// initialize the P2PServer struct and return a pointer
 func getNewP2PServer() *P2PServer {
 	return &P2PServer{
 		clients: make(map [*Client]bool),
@@ -46,6 +55,7 @@ func getNewP2PServer() *P2PServer {
 	}
 }
 
+// fire up the server and listen on all the channels
 func initializeP2PServer(hub *P2PServer, blockchain *[]Block) {
 	for {
 		select {
@@ -67,9 +77,9 @@ func initializeP2PServer(hub *P2PServer, blockchain *[]Block) {
 				}
 			case client := <- hub.queryLatest:
 				latestBlock := append(make([]Block, 0), getLatestBlock(*blockchain))
-				client.send <-createJSONResponse(2,latestBlock)
+				client.send <-createJSONResponse(messageTypes["BLOCKHAIN"],latestBlock)
 			case client := <- hub.queryAll:
-				client.send <-createJSONResponse(2, *blockchain)
+				client.send <-createJSONResponse(messageTypes["BLOCKHAIN"], *blockchain)
 			case message := <- hub.chainResponse:
 				handleBlockchainResponse(message, blockchain, hub)
 
@@ -78,6 +88,7 @@ func initializeP2PServer(hub *P2PServer, blockchain *[]Block) {
 	}
 }
 
+// return a list of all currently registered peer nodes
 func (h *P2PServer) listPeers() []net.Addr {
 	peers := make([]net.Addr, 0)
 	for peer := range h.clients {
@@ -122,11 +133,6 @@ var upgrader = websocket.Upgrader{
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (c *Client) readPump() {
-	messageTypes := map[string]float64 {
-		"QUERY_LATEST": 0,
-		"QUERY_ALL": 1,
-		"BLOCKHAIN": 2,
-	}
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -207,6 +213,7 @@ func (c *Client) writePump() {
 	}
 }
 
+// This method determines what we do when we receive a new chain from another node.
 func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, hub *P2PServer) {
 	if len(receivedBlocks) == 0 {
 		fmt.Println("Recived a blockchain of length 0")
@@ -216,18 +223,19 @@ func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, hub *
 	latestBlockHeld := getLatestBlock(*heldBlocks)
 	if latestBlockReceived.Index > latestBlockHeld.Index {
 		if validateNewBlock(latestBlockReceived, latestBlockHeld) {
-			hub.broadcast <-createJSONResponse(2, *addBlockToChain(heldBlocks, latestBlockReceived))
+			hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *addBlockToChain(heldBlocks, latestBlockReceived))
 		}
 	}
 	if len(receivedBlocks) == 1 {
-		hub.broadcast <-createJSONResponse(1, nil)
+		hub.broadcast <-createJSONResponse(messageTypes["QUERY_ALL"], nil)
 	} else {
 		if newChain := replaceChain(heldBlocks, *heldBlocks, receivedBlocks); newChain != nil {
-			hub.broadcast <-createJSONResponse(2, *newChain)
+			hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *newChain)
 		}
 	}
 }
 
+// Format our message struct for transmission via websocket to our peer(s)
 func createJSONResponse(messageType float64, data []Block) []byte {
 	response := Message{
 		MessageType: messageType,
