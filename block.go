@@ -12,11 +12,11 @@ import (
 )
 
 type Block struct {
-	Index        int
-	Data         string
-	Timestamp    int64
-	Hash         []byte
-	PreviousHash []byte
+	Index        int    `json:"index"`
+	Data         string `json:"data"`
+	Timestamp    int64  `json:"timestamp"`
+	Hash         []byte `json:"hash"`
+	PreviousHash []byte `json:"previousHash"`
 }
 
 type UserData struct {
@@ -31,6 +31,8 @@ func main() {
 	genesisBlock := Block{0, "genesis", genesisTime, genesisHash.Sum(nil), nil}
 
 	// Initialize chain and store in memory
+	// TODO: Blockchain should implement an interface with all of these validation/generation/replace methods (below)
+	// TODO: the Blockchain should have a property called chain of type []Block
 	blockchain := make([]Block, 1)
 	blockchain[0] = genesisBlock
 	fmt.Println("AceCoin successfully initialized.")
@@ -69,12 +71,8 @@ func validateNewBlock(newBlock Block, previousBlock Block) bool {
 	return true
 }
 
-func validateChain(genesisBlock *Block, blockchain *[]Block) bool {
+func validateChain(blockchain *[]Block) bool {
 	chainValue := *blockchain
-	genesisValue := *genesisBlock
-	if !compareBlocks(chainValue[0], genesisValue) {
-		return false
-	}
 	for i := 1; i <= len(chainValue); i++ {
 		if !validateNewBlock(chainValue[i + 1], chainValue[i]) {
 			return false
@@ -83,13 +81,20 @@ func validateChain(genesisBlock *Block, blockchain *[]Block) bool {
 	return true
 }
 
-func replaceChain(genesisBlock *Block, currentChain *[]Block, currentBlocks []Block, newBlocks []Block) {
-	if validateChain(genesisBlock, &newBlocks) && len(newBlocks) > len(currentBlocks) {
+func replaceChain(currentChain *[]Block, currentBlocks []Block, newBlocks []Block) *[]Block {
+	if validateChain(&newBlocks) && len(newBlocks) > len(currentBlocks) {
 		currentChain = &newBlocks
-		// broadcast new chain
+		return currentChain
 	} else {
 		fmt.Println("Received invalid chain.  Not replacing.")
+		return nil
 	}
+}
+
+func addBlockToChain(currentChain *[]Block, newBlock Block) *[]Block {
+	newChain := append(*currentChain, newBlock)
+	currentChain = &newChain
+	return currentChain
 }
 
 func compareBlocks(blockOne Block, blockTwo Block) bool {
@@ -118,6 +123,10 @@ func hashBlock(block Block) []byte {
 	hasher.Write([]byte(hashData))
 	hasher.Write(block.PreviousHash)
 	return hasher.Sum(nil)
+}
+
+func getLatestBlock(blockchain []Block) Block {
+	return blockchain[len(blockchain) - 1]
 }
 
 func getBlockchainJSON(blockchain []Block, w http.ResponseWriter) {

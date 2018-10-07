@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"net/http"
 	"net"
+	"encoding/json"
+	"fmt"
 )
 
 type Client struct {
@@ -17,23 +19,34 @@ type Client struct {
 
 type P2PServer struct {
 	clients map [*Client]bool
-	broadcast chan []byte
 	register chan *Client
 	unregister chan *Client
+	broadcast chan []byte
+	queryLatest chan *Client
+	queryAll chan *Client
+	chainResponse chan []Block
 }
 
-// Hub
+type Message struct {
+	MessageType float64 `json:"messageType"`
+	Data []Block `json:"data"`
+}
+
+// Server
 
 func getNewP2PServer() *P2PServer {
 	return &P2PServer{
 		clients: make(map [*Client]bool),
-		broadcast: make(chan []byte),
 		register: make(chan *Client),
 		unregister: make(chan *Client),
+		broadcast: make(chan []byte),
+		queryLatest: make(chan *Client),
+		queryAll: make(chan *Client),
+		chainResponse: make(chan []Block),
 	}
 }
 
-func initializeP2PServer(hub *P2PServer) {
+func initializeP2PServer(hub *P2PServer, blockchain *[]Block) {
 	for {
 		select {
 			case client := <-hub.register:
@@ -52,6 +65,14 @@ func initializeP2PServer(hub *P2PServer) {
 							delete(hub.clients, client)
 					}
 				}
+			case client := <- hub.queryLatest:
+				latestBlock := append(make([]Block, 0), getLatestBlock(*blockchain))
+				client.send <-createJSONResponse(2,latestBlock)
+			case client := <- hub.queryAll:
+				client.send <-createJSONResponse(2, *blockchain)
+			case message := <- hub.chainResponse:
+				handleBlockchainResponse(message, blockchain, hub)
+
 
 		}
 	}
@@ -101,6 +122,11 @@ var upgrader = websocket.Upgrader{
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (c *Client) readPump() {
+	messageTypes := map[string]float64 {
+		"QUERY_LATEST": 0,
+		"QUERY_ALL": 1,
+		"BLOCKHAIN": 2,
+	}
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -117,7 +143,21 @@ func (c *Client) readPump() {
 			break
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		c.hub.broadcast <- message
+		var messageJSON map[string]interface{}
+		if err := json.Unmarshal(message, &messageJSON); err != nil {
+			panic(err)
+		}
+		messageType := messageJSON["messageType"].(float64)
+		switch messageType {
+			case messageTypes["QUERY_LATEST"]:
+				c.hub.queryLatest <-c
+			case messageTypes["QUERY_ALL"]:
+				c.hub.queryAll <-c
+			case messageTypes["BLOCKHAIN"]:
+				c.hub.chainResponse <- messageJSON["data"].([]Block)
+			default:
+				log.Printf("error: %v", "invalid message type.")
+		}
 	}
 }
 
@@ -167,7 +207,40 @@ func (c *Client) writePump() {
 	}
 }
 
-// Handle websocket requests from the peer.
+func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, hub *P2PServer) {
+	if len(receivedBlocks) == 0 {
+		fmt.Println("Recived a blockchain of length 0")
+		return
+	}
+	latestBlockReceived := getLatestBlock(receivedBlocks)
+	latestBlockHeld := getLatestBlock(*heldBlocks)
+	if latestBlockReceived.Index > latestBlockHeld.Index {
+		if validateNewBlock(latestBlockReceived, latestBlockHeld) {
+			hub.broadcast <-createJSONResponse(2, *addBlockToChain(heldBlocks, latestBlockReceived))
+		}
+	}
+	if len(receivedBlocks) == 1 {
+		hub.broadcast <-createJSONResponse(1, nil)
+	} else {
+		if newChain := replaceChain(heldBlocks, *heldBlocks, receivedBlocks); newChain != nil {
+			hub.broadcast <-createJSONResponse(2, *newChain)
+		}
+	}
+}
+
+func createJSONResponse(messageType float64, data []Block) []byte {
+	response := Message{
+		MessageType: messageType,
+		Data: data,
+	}
+	JSONresponse, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+	return JSONresponse
+}
+
+// Handle websocket requests from peers.
 func serveWs(hub *P2PServer, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {

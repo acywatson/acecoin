@@ -11,7 +11,7 @@ func initializeHttpServer(blockchain []Block) {
 
 	// Start P2P server
 	p2pServer := getNewP2PServer()
-	go initializeP2PServer(p2pServer)
+	go initializeP2PServer(p2pServer, &blockchain)
 
 	// List blocks
 	http.HandleFunc("/chain", func(w http.ResponseWriter, r *http.Request) {
@@ -44,8 +44,6 @@ func initializeHttpServer(blockchain []Block) {
 		}
 		newBlock, newChain := generateNextBlock(&blockchain, blockchain[len(blockchain) - 1], data.Data, w)
 		blockchain = *newChain
-		// fmt.Println("New Chain:")
-		// fmt.Println(blockchain)
 		json.NewEncoder(w).Encode(newBlock)
 	})
 
