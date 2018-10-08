@@ -23,6 +23,9 @@ type UserData struct {
 	Data string
 }
 
+// The primary chain itself needs to be globally available to avoid convoluted closures in the P2PServer
+var blockchain = make([]Block, 1)
+
 func main() {
 	// Create genesis block
 	genesisTime := time.Now().Unix()
@@ -33,7 +36,6 @@ func main() {
 	// Initialize chain and store in memory
 	// TODO: Blockchain should implement an interface with all of these validation/generation/replace methods (below)
 	// TODO: the Blockchain should have a property called chain of type []Block
-	blockchain := make([]Block, 1)
 	blockchain[0] = genesisBlock
 	fmt.Println("AceCoin successfully initialized.")
 	fmt.Println("Genesis:")
@@ -56,7 +58,7 @@ func generateNextBlock(blockchain *[]Block, previousBlock Block, blockData strin
 }
 
 func validateNewBlock(newBlock Block, previousBlock Block) bool {
-	if newBlock.Index != previousBlock.Index+ 1 {
+	if newBlock.Index != previousBlock.Index + 1 {
 		fmt.Println("Invalid Index.")
 		return false
 	}

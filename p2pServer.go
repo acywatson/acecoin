@@ -80,10 +80,6 @@ func initializeP2PServer(hub *P2PServer, blockchain *[]Block) {
 				client.send <-createJSONResponse(messageTypes["BLOCKHAIN"],latestBlock)
 			case client := <- hub.queryAll:
 				client.send <-createJSONResponse(messageTypes["BLOCKHAIN"], *blockchain)
-			case message := <- hub.chainResponse:
-				handleBlockchainResponse(message, blockchain, hub)
-
-
 		}
 	}
 }
@@ -149,19 +145,19 @@ func (c *Client) readPump() {
 			break
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		var messageJSON map[string]interface{}
+		var messageJSON Message
 		if err := json.Unmarshal(message, &messageJSON); err != nil {
 			panic(err)
 		}
-		messageType := messageJSON["messageType"].(float64)
+		messageType := messageJSON.MessageType
 		switch messageType {
 			case messageTypes["QUERY_LATEST"]:
 				c.hub.queryLatest <-c
 			case messageTypes["QUERY_ALL"]:
 				c.hub.queryAll <-c
 			case messageTypes["BLOCKHAIN"]:
-				c.hub.chainResponse <- messageJSON["data"].([]Block)
-			default:
+				handleBlockchainResponse(messageJSON.Data, &blockchain, c)
+		default:
 				log.Printf("error: %v", "invalid message type.")
 		}
 	}
@@ -214,7 +210,7 @@ func (c *Client) writePump() {
 }
 
 // This method determines what we do when we receive a new chain from another node.
-func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, hub *P2PServer) {
+func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, c *Client) {
 	if len(receivedBlocks) == 0 {
 		fmt.Println("Recived a blockchain of length 0")
 		return
@@ -223,14 +219,13 @@ func handleBlockchainResponse(receivedBlocks []Block, heldBlocks *[]Block, hub *
 	latestBlockHeld := getLatestBlock(*heldBlocks)
 	if latestBlockReceived.Index > latestBlockHeld.Index {
 		if validateNewBlock(latestBlockReceived, latestBlockHeld) {
-			hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *addBlockToChain(heldBlocks, latestBlockReceived))
-		}
-	}
-	if len(receivedBlocks) == 1 {
-		hub.broadcast <-createJSONResponse(messageTypes["QUERY_ALL"], nil)
-	} else {
-		if newChain := replaceChain(heldBlocks, *heldBlocks, receivedBlocks); newChain != nil {
-			hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *newChain)
+			c.hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *addBlockToChain(heldBlocks, latestBlockReceived))
+		} else if len(receivedBlocks) == 1 {
+			c.hub.broadcast <-createJSONResponse(messageTypes["QUERY_ALL"], nil)
+		} else {
+			if newChain := replaceChain(heldBlocks, *heldBlocks, receivedBlocks); newChain != nil {
+				c.hub.broadcast <-createJSONResponse(messageTypes["BLOCKHAIN"], *newChain)
+			}
 		}
 	}
 }
